@@ -1,5 +1,7 @@
 import UserModel from "../Models/UserModels.js";
 import bcrypt from 'bcrypt';
+import jwt from "jsonwebtoken";
+
 
 export const registerUser = async (req, res) => {
   const { userName, password, firstName, lastName } = req.body;
@@ -10,16 +12,18 @@ export const registerUser = async (req, res) => {
 
   try {
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(req.body.password, salt);
+    req.body.password = hashedPassword;
+    const newUser = new UserModel(req.body);
+    const oldUser = await UserModel.findOne({ userName });
 
-    const newUser = new UserModel({
-      userName,
-      password: hashedPassword,
-      firstName,
-      lastName,
-    });
-    await newUser.save();
-    res.status(200).json(newUser);
+    if (oldUser) {
+      return res.status(200).json("User already exists");
+    }
+
+    const user = await newUser.save();
+    const token = jwt.sign({ userName: user.userName, id: user._id }, "helloBuka", { expiresIn: '1h' });
+    res.status(200).json({ user, token });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -36,10 +40,11 @@ export const loginUser = async (req, res) => {
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      return res.status(401).json({ message: "Password don't match" });
+      return res.status(401).json({ message: "Password doesn't match" });
     }
 
-    res.status(200).json(user);
+    const token = jwt.sign({ userName: user.userName, id: user._id }, "helloBuka", { expiresIn: '1h' });
+    res.status(200).json({ user, token });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
